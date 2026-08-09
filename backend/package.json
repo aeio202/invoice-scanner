@@ -17,6 +17,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "google-auth-library": "^11.0.0",
-    "node-cron": "^4.6.0"
+    "node-cron": "^4.6.0",
+    "resend": "^6.18.1"
   }
 }

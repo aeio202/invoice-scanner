@@ -36,6 +36,16 @@
 		</section>
 
 		<section class="panel">
+			<h2>Accountant email</h2>
+			<p class="muted">Confirmed invoices for each month are forwarded here automatically. Leave blank to disable forwarding.</p>
+			<div class="settings-row">
+				<input id="accountant-email-input" type="email" class="text-input" placeholder="accountant@example.com" />
+				<button id="accountant-email-save-btn" class="btn btn-primary">Save</button>
+			</div>
+			<p id="accountant-email-message" class="banner" style="display: none;"></p>
+		</section>
+
+		<section class="panel">
 			<h2>Total spend</h2>
 			<div id="totals-currency" class="stat-tiles"></div>
 			<h3>By month</h3>
@@ -186,6 +196,16 @@
 				color: var(--color-error-text);
 			}
 
+			.banner.has-errors {
+				background: var(--color-error-bg);
+				color: var(--color-error-text);
+			}
+
+			.banner.success {
+				background: var(--color-ok-bg);
+				color: var(--color-ok-text);
+			}
+
 			.btn {
 				font-family: inherit;
 				font-size: 0.9rem;
@@ -328,6 +348,27 @@
 			.download-btn:hover {
 				border-color: var(--color-accent);
 			}
+
+			.settings-row {
+				display: flex;
+				gap: 0.5rem;
+				flex-wrap: wrap;
+			}
+
+			.text-input {
+				font-family: inherit;
+				font-size: 0.9rem;
+				padding: 0.5rem 0.75rem;
+				border: 1px solid var(--color-border);
+				border-radius: 4px;
+				min-width: 260px;
+				flex: 1;
+			}
+
+			.text-input:focus {
+				outline: none;
+				border-color: var(--color-accent);
+			}
 		</style>
 
 		<script>
@@ -367,6 +408,9 @@
 				const totalsMonthEl = document.getElementById('totals-month')!;
 				const invoicesEmptyEl = document.getElementById('invoices-empty')!;
 				const invoicesTbody = document.getElementById('invoices-tbody')!;
+				const accountantEmailInput = document.getElementById('accountant-email-input') as HTMLInputElement;
+				const accountantEmailSaveBtn = document.getElementById('accountant-email-save-btn') as HTMLButtonElement;
+				const accountantEmailMessageEl = document.getElementById('accountant-email-message')!;
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -574,6 +618,51 @@
 					}
 				});
 
+				async function loadAccountantEmail() {
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/me`, {
+							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						accountantEmailInput.value = body.accountantEmail ?? '';
+					} catch (err) {
+						// Non-fatal: field just stays blank; save still works from a clean input.
+					}
+				}
+
+				accountantEmailSaveBtn.addEventListener('click', async () => {
+					const value = accountantEmailInput.value.trim();
+					accountantEmailSaveBtn.disabled = true;
+					accountantEmailMessageEl.style.display = 'none';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/me`, {
+							method: 'PATCH',
+							headers: {
+								Authorization: `Bearer ${session.access_token}`,
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({ accountantEmail: value || null }),
+						});
+						const body = await res.json();
+						accountantEmailMessageEl.style.display = 'block';
+						accountantEmailMessageEl.classList.remove('has-errors', 'success');
+						if (!res.ok) {
+							accountantEmailMessageEl.classList.add('has-errors');
+							accountantEmailMessageEl.textContent = body.message || body.error || 'Failed to save.';
+						} else {
+							accountantEmailMessageEl.classList.add('success');
+							accountantEmailMessageEl.textContent = value ? 'Saved.' : 'Forwarding disabled.';
+						}
+					} catch (err) {
+						accountantEmailMessageEl.style.display = 'block';
+						accountantEmailMessageEl.classList.remove('success');
+						accountantEmailMessageEl.classList.add('has-errors');
+						accountantEmailMessageEl.textContent = `Failed to save: ${(err as Error).message}`;
+					} finally {
+						accountantEmailSaveBtn.disabled = false;
+					}
+				});
+
 				async function loadInvoices() {
 					const res = await fetch(`${API_BASE_URL}/api/invoices`, {
 						headers: { Authorization: `Bearer ${session.access_token}` },
@@ -617,6 +706,7 @@
 
 				await loadInvoices();
 				await refreshGmailStatus();
+				await loadAccountantEmail();
 			}
 		</script>
 	</body>

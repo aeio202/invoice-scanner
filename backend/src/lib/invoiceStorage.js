@@ -25,13 +25,24 @@ function sanitizeForFilename(value) {
 // Mints a short-lived signed URL for a private bucket object. The download
 // filename is derived from the invoice's own vendor/date columns rather than
 // stored separately, so no new invoices column is needed just for this.
-async function createInvoiceDownloadUrl(supabase, storagePath, vendor, invoiceDate) {
+// ttlSeconds defaults to the in-app download button's 60s; the forward job
+// passes a much longer TTL for its oversized-attachment fallback links.
+async function createInvoiceDownloadUrl(supabase, storagePath, vendor, invoiceDate, ttlSeconds = SIGNED_URL_TTL_SECONDS) {
   const downloadName = `${sanitizeForFilename(vendor ?? 'invoice')}-${sanitizeForFilename(invoiceDate ?? '')}.pdf`;
   const { data, error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS, { download: downloadName });
+    .createSignedUrl(storagePath, ttlSeconds, { download: downloadName });
   if (error) throw error;
   return data.signedUrl;
+}
+
+// Downloads the actual PDF bytes server-side — for attaching to an email,
+// distinct from createInvoiceDownloadUrl which mints a URL for someone else
+// to fetch later.
+async function downloadInvoicePdfBuffer(supabase, storagePath) {
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(storagePath);
+  if (error) throw error;
+  return Buffer.from(await data.arrayBuffer());
 }
 
 module.exports = {
@@ -40,4 +51,5 @@ module.exports = {
   storagePathFor,
   uploadInvoicePdf,
   createInvoiceDownloadUrl,
+  downloadInvoicePdfBuffer,
 };
