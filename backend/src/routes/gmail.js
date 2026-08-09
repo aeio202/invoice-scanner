@@ -5,8 +5,8 @@ const { getAuthUrl, exchangeCode, GMAIL_READONLY_SCOPE, getClient } = require('.
 const { createState, verifyState } = require('../lib/oauthState');
 const { encrypt, decrypt } = require('../lib/tokenCrypto');
 const { GMAIL_API_BASE, resolveMonths, buildSearchQuery, summarizeMessage } = require('../lib/gmailApi');
-const { extractFromGmailMessage, ExtractionError, computeDedupHash } = require('../lib/invoiceExtraction');
-const { uploadInvoicePdf } = require('../lib/invoiceStorage');
+const { extractFromGmailMessage, ExtractionError } = require('../lib/invoiceExtraction');
+const { scanUserInvoices } = require('../lib/scanService');
 
 const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4321';
@@ -187,151 +187,17 @@ router.post('/scan', requireAuth, async (req, res) => {
   const client = getClient();
   client.setCredentials({ refresh_token: decrypt(connection.oauth_token) });
 
-  const months = resolveMonths(req.body?.months);
-  const query = buildSearchQuery(months);
-
-  let listRes;
   try {
-    listRes = await client.request({
-      method: 'GET',
-      url: `${GMAIL_API_BASE}/messages`,
-      params: { q: query, maxResults: 25 },
-    });
+    const result = await scanUserInvoices(client, req.user.id, req.body?.months);
+    res.json(result);
   } catch (err) {
-    if (err?.response?.data?.error === 'invalid_grant') {
-      return res.status(409).json({
-        error: 'gmail_reauth_required',
-        message: 'Gmail access was revoked. Please reconnect Gmail.',
-      });
+    if (err instanceof ExtractionError) {
+      const status = err.code === 'gmail_reauth_required' ? 409 : 502;
+      return res.status(status).json({ error: err.code, message: err.message });
     }
-    console.error('Gmail search failed:', err.message);
-    return res.status(502).json({ error: 'Failed to search Gmail messages' });
+    console.error('Unexpected error in /scan:', err);
+    res.status(500).json({ error: 'internal_error' });
   }
-
-  const ids = (listRes.data.messages || []).map((m) => m.id);
-  const results = [];
-
-  for (const id of ids) {
-    let extracted;
-    try {
-      extracted = await extractFromGmailMessage(client, id);
-    } catch (err) {
-      if (err instanceof ExtractionError) {
-        // A revoked token fails identically for every remaining message —
-        // stop the whole scan rather than recording N identical failures.
-        if (err.code === 'gmail_reauth_required') {
-          return res.status(409).json({
-            error: 'gmail_reauth_required',
-            message: err.message,
-            partialResults: results,
-          });
-        }
-        if (err.code === 'no_pdf_attachment' || err.code === 'pdf_part_not_found') {
-          results.push({ messageId: id, outcome: 'skipped_no_pdf' });
-          continue;
-        }
-        results.push({ messageId: id, outcome: 'error', stage: 'extraction', code: err.code, message: err.message });
-        continue;
-      }
-      console.error('Unexpected error scanning message', id, err);
-      results.push({ messageId: id, outcome: 'error', stage: 'unexpected', message: err.message });
-      continue;
-    }
-
-    const { extraction } = extracted;
-    if (!extraction.is_invoice) {
-      results.push({ messageId: id, outcome: 'skipped_not_invoice', reason: extraction.reason });
-      continue;
-    }
-
-    const dedupHash =
-      extraction.vendor && extraction.invoice_date && extraction.amount != null
-        ? computeDedupHash(extraction.vendor, extraction.invoice_date, extraction.amount)
-        : null;
-    const status =
-      extraction.vendor && extraction.amount != null && extraction.currency && extraction.invoice_date
-        ? 'confirmed'
-        : 'needs_review';
-
-    // Plain insert + catch the unique-violation, rather than ON CONFLICT: the
-    // dedup index is partial (WHERE dedup_hash IS NOT NULL), and getting
-    // Postgres to infer a partial index as an ON CONFLICT arbiter needs the
-    // conflict clause's WHERE to exactly mirror the index predicate. Letting
-    // the DB reject the duplicate and classifying 23505 here is simpler and
-    // just as correct — the constraint is still the actual source of truth.
-    const { data: inserted, error: insertError } = await supabase
-      .from('invoices')
-      .insert({
-        user_id: req.user.id,
-        vendor: extraction.vendor,
-        amount: extraction.amount,
-        currency: extraction.currency,
-        invoice_date: extraction.invoice_date,
-        status,
-        source: 'attachment',
-        dedup_hash: dedupHash,
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (insertError) {
-      if (insertError.code === '23505') {
-        results.push({ messageId: id, outcome: 'skipped_duplicate', vendor: extraction.vendor });
-      } else {
-        console.error('Invoice insert failed:', insertError);
-        results.push({ messageId: id, outcome: 'error', stage: 'db_insert', message: insertError.message });
-      }
-      continue;
-    }
-
-    // Only reached on a genuine new save — never for a duplicate, since that
-    // branch already `continue`d above. This ordering (insert first, upload
-    // only on success) is what makes "don't upload a PDF for an invoice
-    // we're not saving" true by construction, not by upload-then-cleanup.
-    let storagePath = null;
-    let uploadError = null;
-    try {
-      storagePath = await uploadInvoicePdf(supabase, req.user.id, inserted.id, extracted.pdfBuffer);
-      const { error: linkError } = await supabase
-        .from('invoices')
-        .update({ storage_path: storagePath })
-        .eq('id', inserted.id);
-      if (linkError) {
-        // Upload succeeded but the row never got linked to it — narrow, rare
-        // window (a single-row UPDATE right after a successful INSERT almost
-        // never fails on its own). Left unreconciled this slice: flagged,
-        // not silently ignored.
-        console.error('PDF uploaded but failed to link storage_path:', linkError);
-        uploadError = 'PDF uploaded but failed to record storage_path';
-        storagePath = null;
-      }
-    } catch (err) {
-      console.error('PDF upload failed:', err);
-      uploadError = 'Failed to upload PDF to storage';
-    }
-
-    results.push({
-      messageId: id,
-      outcome: 'saved',
-      invoiceId: inserted.id,
-      status,
-      vendor: extraction.vendor,
-      storagePath,
-      uploadError,
-    });
-  }
-
-  res.json({
-    months,
-    query,
-    count: ids.length,
-    saved: results.filter((r) => r.outcome === 'saved').length,
-    skippedNotInvoice: results.filter((r) => r.outcome === 'skipped_not_invoice').length,
-    skippedDuplicate: results.filter((r) => r.outcome === 'skipped_duplicate').length,
-    skippedNoPdf: results.filter((r) => r.outcome === 'skipped_no_pdf').length,
-    errors: results.filter((r) => r.outcome === 'error').length,
-    results,
-  });
 });
 
 module.exports = router;
