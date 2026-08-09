@@ -6,6 +6,7 @@ const { createState, verifyState } = require('../lib/oauthState');
 const { encrypt, decrypt } = require('../lib/tokenCrypto');
 const { GMAIL_API_BASE, resolveMonths, buildSearchQuery, summarizeMessage } = require('../lib/gmailApi');
 const { extractFromGmailMessage, ExtractionError, computeDedupHash } = require('../lib/invoiceExtraction');
+const { uploadInvoicePdf } = require('../lib/invoiceStorage');
 
 const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4321';
@@ -283,7 +284,41 @@ router.post('/scan', requireAuth, async (req, res) => {
       continue;
     }
 
-    results.push({ messageId: id, outcome: 'saved', invoiceId: inserted.id, status, vendor: extraction.vendor });
+    // Only reached on a genuine new save — never for a duplicate, since that
+    // branch already `continue`d above. This ordering (insert first, upload
+    // only on success) is what makes "don't upload a PDF for an invoice
+    // we're not saving" true by construction, not by upload-then-cleanup.
+    let storagePath = null;
+    let uploadError = null;
+    try {
+      storagePath = await uploadInvoicePdf(supabase, req.user.id, inserted.id, extracted.pdfBuffer);
+      const { error: linkError } = await supabase
+        .from('invoices')
+        .update({ storage_path: storagePath })
+        .eq('id', inserted.id);
+      if (linkError) {
+        // Upload succeeded but the row never got linked to it — narrow, rare
+        // window (a single-row UPDATE right after a successful INSERT almost
+        // never fails on its own). Left unreconciled this slice: flagged,
+        // not silently ignored.
+        console.error('PDF uploaded but failed to link storage_path:', linkError);
+        uploadError = 'PDF uploaded but failed to record storage_path';
+        storagePath = null;
+      }
+    } catch (err) {
+      console.error('PDF upload failed:', err);
+      uploadError = 'Failed to upload PDF to storage';
+    }
+
+    results.push({
+      messageId: id,
+      outcome: 'saved',
+      invoiceId: inserted.id,
+      status,
+      vendor: extraction.vendor,
+      storagePath,
+      uploadError,
+    });
   }
 
   res.json({

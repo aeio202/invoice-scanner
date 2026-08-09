@@ -111,7 +111,7 @@ async function fetchGmailMessage(gmailClient, messageId) {
   }
 }
 
-async function fetchPdfBase64(gmailClient, messageId, part) {
+async function fetchPdfBuffer(gmailClient, messageId, part) {
   try {
     let gmailB64url;
     if (part.body?.data) {
@@ -125,16 +125,17 @@ async function fetchPdfBase64(gmailClient, messageId, part) {
       gmailB64url = attRes.data.data;
     }
     // Gmail returns attachment bytes as base64url (no padding, - and _
-    // instead of + and /). Decoding as base64url yields the raw bytes;
-    // re-encoding those same bytes as standard base64 is a lossless
-    // round-trip — exactly what Claude's document content block requires.
-    return Buffer.from(gmailB64url, 'base64url').toString('base64');
+    // instead of + and /). Decoding as base64url yields the raw bytes,
+    // which are what both Claude's base64 encoding and Storage's upload
+    // need — the buffer is the single source of truth, converted at each
+    // point of use (toString('base64') for Claude, passed as-is to Storage).
+    return Buffer.from(gmailB64url, 'base64url');
   } catch (err) {
     throw new ExtractionError('attachment_fetch_failed', 'Failed to fetch Gmail attachment');
   }
 }
 
-async function callClaudeExtraction(pdfBase64) {
+async function callClaudeExtraction(pdfBuffer) {
   try {
     // Sensitive-data flow: this PDF's financial content leaves this backend
     // and is sent to Anthropic's Claude API. Acceptable per SPEC.md §3.6/§5
@@ -149,7 +150,7 @@ async function callClaudeExtraction(pdfBase64) {
         {
           role: 'user',
           content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBuffer.toString('base64') } },
             { type: 'text', text: 'Extract the invoice fields from this document.' },
           ],
         },
@@ -167,7 +168,9 @@ async function callClaudeExtraction(pdfBase64) {
 // Fetches a Gmail message, locates its PDF attachment (by partId if given,
 // else the first PDF part found), downloads the bytes, and runs Claude
 // extraction on it. Shared by /extract (single message) and /scan (bulk) so
-// the fetch/find/extract sequence is defined exactly once.
+// the fetch/find/extract sequence is defined exactly once. Returns the raw
+// pdfBuffer too, so /scan can upload it to Storage without a second Gmail
+// fetch — the bytes were already downloaded here for Claude.
 async function extractFromGmailMessage(gmailClient, messageId, partId) {
   const message = await fetchGmailMessage(gmailClient, messageId);
   const part = findPdfPart(message.payload, partId);
@@ -179,9 +182,9 @@ async function extractFromGmailMessage(gmailClient, messageId, partId) {
         : 'No PDF attachment was found on this message.',
     );
   }
-  const pdfBase64 = await fetchPdfBase64(gmailClient, messageId, part);
-  const { extraction, usage } = await callClaudeExtraction(pdfBase64);
-  return { part, extraction, usage };
+  const pdfBuffer = await fetchPdfBuffer(gmailClient, messageId, part);
+  const { extraction, usage } = await callClaudeExtraction(pdfBuffer);
+  return { part, extraction, usage, pdfBuffer };
 }
 
 function normalizeVendor(vendor) {

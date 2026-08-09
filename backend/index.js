@@ -4,6 +4,7 @@ const cors = require('cors');
 const requireAuth = require('./src/middleware/auth');
 const meRouter = require('./src/routes/me');
 const gmailRouter = require('./src/routes/gmail');
+const invoicesRouter = require('./src/routes/invoices');
 
 const app = express();
 app.use(cors());
@@ -17,6 +18,7 @@ app.use('/api/me', requireAuth, meRouter);
 // mounted without a blanket requireAuth (unlike /api/me) — /callback must stay
 // public since Google's redirect carries no Authorization header
 app.use('/api/gmail', gmailRouter);
+app.use('/api/invoices', requireAuth, invoicesRouter);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

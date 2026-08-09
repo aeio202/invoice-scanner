@@ -38,6 +38,12 @@
 		<button id="scan-btn" style="display: none;">Scan &amp; save invoices</button>
 		<pre id="scan-result"></pre>
 
+		<hr />
+		<label for="download-invoice-id">Invoice ID:</label>
+		<input id="download-invoice-id" type="text" placeholder="paste an invoiceId from a scan result" style="width: 320px;" />
+		<button id="download-btn" style="display: none;">Download PDF</button>
+		<pre id="download-result"></pre>
+
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
 
@@ -75,6 +81,7 @@
 				const gmailConnectBtn = document.getElementById('gmail-connect')!;
 				const gmailFetchBtn = document.getElementById('gmail-fetch')!;
 				const scanBtn = document.getElementById('scan-btn')!;
+				const downloadBtn = document.getElementById('download-btn')!;
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -99,11 +106,13 @@
 							gmailConnectBtn.style.display = 'none';
 							gmailFetchBtn.style.display = 'inline-block';
 							scanBtn.style.display = 'inline-block';
+							downloadBtn.style.display = 'inline-block';
 						} else {
 							gmailStatusEl.textContent = 'Gmail not connected.';
 							gmailConnectBtn.style.display = 'inline-block';
 							gmailFetchBtn.style.display = 'none';
 							scanBtn.style.display = 'none';
+							downloadBtn.style.display = 'none';
 						}
 					} catch (err) {
 						gmailStatusEl.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
@@ -171,6 +180,26 @@
 						});
 						const body = await res.json();
 						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+					} catch (err) {
+						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+					}
+				});
+
+				downloadBtn.addEventListener('click', async () => {
+					const resultEl = document.getElementById('download-result')!;
+					const invoiceId = (document.getElementById('download-invoice-id') as HTMLInputElement).value.trim();
+					if (!invoiceId) {
+						resultEl.textContent = 'Invoice ID is required.';
+						return;
+					}
+					resultEl.textContent = 'Loading…';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/invoices/${invoiceId}/download`, {
+							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+						if (body.url) window.open(body.url, '_blank');
 					} catch (err) {
 						resultEl.textContent = `Request failed: ${(err as Error).message}`;
 					}
