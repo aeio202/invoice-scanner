@@ -9,43 +9,339 @@
 		<link rel="icon" href="/favicon.ico" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Dashboard</title>
+		<title>Invoice Scanner</title>
 	</head>
 	<body>
-		<h1>Dashboard</h1>
-		<p id="email"></p>
-		<button id="sign-out">Sign out</button>
-		<button id="call-api">Call protected API</button>
-		<pre id="api-result"></pre>
+		<header class="topbar">
+			<h1>Invoice Scanner</h1>
+			<div class="topbar-right">
+				<span id="user-email" class="muted"></span>
+				<button id="sign-out-btn" class="btn btn-ghost">Sign out</button>
+			</div>
+		</header>
 
-		<hr />
+		<section class="panel gmail-panel">
+			<div class="gmail-row">
+				<div class="gmail-status">
+					<span id="gmail-status-dot" class="status-dot"></span>
+					<span id="gmail-status-text">Checking Gmail connection…</span>
+				</div>
+				<div class="gmail-actions">
+					<button id="gmail-connect-btn" class="btn btn-primary" style="display: none;">Connect Gmail</button>
+					<button id="scan-btn" class="btn btn-primary" style="display: none;">Scan &amp; save invoices</button>
+				</div>
+			</div>
+			<p id="gmail-message" class="banner" style="display: none;"></p>
+			<p id="scan-summary" class="scan-summary" style="display: none;"></p>
+		</section>
 
-		<p id="gmail-status">Checking Gmail connection…</p>
-		<p id="gmail-message" style="display: none;"></p>
-		<button id="gmail-connect" style="display: none;">Connect Gmail</button>
-		<button id="gmail-fetch" style="display: none;">Fetch Gmail messages</button>
-		<pre id="gmail-fetch-result"></pre>
+		<section class="panel">
+			<h2>Total spend</h2>
+			<div id="totals-currency" class="stat-tiles"></div>
+			<h3>By month</h3>
+			<ul id="totals-month" class="month-list"></ul>
+		</section>
 
-		<hr />
-		<label for="extract-message-id">Message ID:</label>
-		<input id="extract-message-id" type="text" placeholder="paste a messageId from above" style="width: 320px;" />
-		<label for="extract-part-id">Part ID (optional):</label>
-		<input id="extract-part-id" type="text" placeholder="optional" style="width: 100px;" />
-		<button id="extract-btn">Extract invoice data</button>
-		<pre id="extract-result"></pre>
+		<section class="panel">
+			<h2>Invoices</h2>
+			<p id="invoices-empty" class="muted" style="display: none;">No invoices yet — click "Scan &amp; save invoices" to get started.</p>
+			<table id="invoices-table" class="invoices-table">
+				<thead>
+					<tr>
+						<th>Vendor</th>
+						<th>Amount</th>
+						<th>Date</th>
+						<th>Status</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody id="invoices-tbody"></tbody>
+			</table>
+		</section>
 
-		<hr />
-		<button id="scan-btn" style="display: none;">Scan &amp; save invoices</button>
-		<pre id="scan-result"></pre>
+		<style is:global>
+			:root {
+				--color-bg: #faf9f6;
+				--color-surface: #ffffff;
+				--color-border: #e4e0d8;
+				--color-ink: #24221d;
+				--color-ink-muted: #6b6659;
+				--color-accent: #0f6b5c;
+				--color-accent-hover: #0b5347;
+				--color-warn-bg: #fdf3d9;
+				--color-warn-text: #7a5b00;
+				--color-ok-bg: #e4efe8;
+				--color-ok-text: #2e5940;
+				--color-error-bg: #f7e6e3;
+				--color-error-text: #a3352b;
+				--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+				--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+			}
 
-		<hr />
-		<label for="download-invoice-id">Invoice ID:</label>
-		<input id="download-invoice-id" type="text" placeholder="paste an invoiceId from a scan result" style="width: 320px;" />
-		<button id="download-btn" style="display: none;">Download PDF</button>
-		<pre id="download-result"></pre>
+			body {
+				margin: 0;
+				background: var(--color-bg);
+				color: var(--color-ink);
+				font-family: var(--font-sans);
+				line-height: 1.5;
+			}
+
+			.topbar {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				max-width: 960px;
+				margin: 0 auto;
+				padding: 1.5rem 1.5rem 1rem;
+			}
+
+			.topbar h1 {
+				font-size: 1.25rem;
+				font-weight: 600;
+				margin: 0;
+				letter-spacing: -0.01em;
+			}
+
+			.topbar-right {
+				display: flex;
+				align-items: center;
+				gap: 0.75rem;
+			}
+
+			.muted {
+				color: var(--color-ink-muted);
+				font-size: 0.9rem;
+			}
+
+			.panel {
+				max-width: 960px;
+				margin: 0 auto 1.25rem;
+				padding: 1.25rem 1.5rem;
+				background: var(--color-surface);
+				border: 1px solid var(--color-border);
+				border-radius: 6px;
+			}
+
+			.panel h2 {
+				font-size: 1rem;
+				font-weight: 600;
+				margin: 0 0 0.75rem;
+			}
+
+			.panel h3 {
+				font-size: 0.85rem;
+				font-weight: 600;
+				color: var(--color-ink-muted);
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+				margin: 1.25rem 0 0.5rem;
+			}
+
+			.gmail-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				flex-wrap: wrap;
+				gap: 0.75rem;
+			}
+
+			.gmail-status {
+				display: flex;
+				align-items: center;
+				gap: 0.5rem;
+			}
+
+			.status-dot {
+				width: 0.6rem;
+				height: 0.6rem;
+				border-radius: 50%;
+				background: var(--color-ink-muted);
+				display: inline-block;
+			}
+
+			.status-dot.connected {
+				background: var(--color-accent);
+			}
+
+			.banner {
+				margin-top: 0.75rem;
+				padding: 0.5rem 0.75rem;
+				border-radius: 4px;
+				background: var(--color-warn-bg);
+				color: var(--color-warn-text);
+				font-size: 0.9rem;
+			}
+
+			.scan-summary {
+				margin-top: 0.75rem;
+				padding: 0.5rem 0.75rem;
+				border-radius: 4px;
+				background: var(--color-ok-bg);
+				color: var(--color-ok-text);
+				font-size: 0.9rem;
+			}
+
+			.scan-summary.has-errors {
+				background: var(--color-error-bg);
+				color: var(--color-error-text);
+			}
+
+			.btn {
+				font-family: inherit;
+				font-size: 0.9rem;
+				font-weight: 500;
+				padding: 0.5rem 0.9rem;
+				border-radius: 4px;
+				border: 1px solid transparent;
+				cursor: pointer;
+			}
+
+			.btn-primary {
+				background: var(--color-accent);
+				color: #ffffff;
+			}
+
+			.btn-primary:hover {
+				background: var(--color-accent-hover);
+			}
+
+			.btn-ghost {
+				background: transparent;
+				border-color: var(--color-border);
+				color: var(--color-ink);
+			}
+
+			.btn-ghost:hover {
+				border-color: var(--color-ink-muted);
+			}
+
+			.stat-tiles {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.75rem;
+			}
+
+			.stat-tile {
+				padding: 0.75rem 1rem;
+				border: 1px solid var(--color-border);
+				border-radius: 6px;
+				min-width: 140px;
+			}
+
+			.stat-tile .currency {
+				display: block;
+				font-size: 0.75rem;
+				color: var(--color-ink-muted);
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+			}
+
+			.stat-tile .amount {
+				display: block;
+				font-family: var(--font-mono);
+				font-size: 1.35rem;
+				margin-top: 0.15rem;
+			}
+
+			.month-list {
+				list-style: none;
+				margin: 0;
+				padding: 0;
+				font-size: 0.9rem;
+			}
+
+			.month-list li {
+				display: flex;
+				gap: 0.75rem;
+				padding: 0.25rem 0;
+				border-bottom: 1px solid var(--color-border);
+			}
+
+			.month-list li:last-child {
+				border-bottom: none;
+			}
+
+			.month-list .month-label {
+				font-weight: 500;
+				min-width: 5rem;
+			}
+
+			.month-list .month-amounts {
+				font-family: var(--font-mono);
+				color: var(--color-ink-muted);
+			}
+
+			.invoices-table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 0.9rem;
+			}
+
+			.invoices-table th {
+				text-align: left;
+				font-size: 0.75rem;
+				text-transform: uppercase;
+				letter-spacing: 0.04em;
+				color: var(--color-ink-muted);
+				padding: 0.4rem 0.5rem;
+				border-bottom: 1px solid var(--color-border);
+			}
+
+			.invoices-table td {
+				padding: 0.5rem;
+				border-bottom: 1px solid var(--color-border);
+			}
+
+			.invoices-table td.amount {
+				font-family: var(--font-mono);
+			}
+
+			.badge {
+				display: inline-block;
+				padding: 0.15rem 0.5rem;
+				border-radius: 999px;
+				font-size: 0.75rem;
+				font-weight: 500;
+			}
+
+			.badge-confirmed {
+				background: var(--color-ok-bg);
+				color: var(--color-ok-text);
+			}
+
+			.badge-needs_review {
+				background: var(--color-warn-bg);
+				color: var(--color-warn-text);
+			}
+
+			.download-btn {
+				font-family: inherit;
+				font-size: 0.85rem;
+				background: transparent;
+				border: 1px solid var(--color-border);
+				border-radius: 4px;
+				padding: 0.25rem 0.6rem;
+				cursor: pointer;
+				color: var(--color-accent);
+			}
+
+			.download-btn:hover {
+				border-color: var(--color-accent);
+			}
+		</style>
 
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
+
+			interface Invoice {
+				id: string;
+				vendor: string | null;
+				amount: number | null;
+				currency: string | null;
+				invoice_date: string | null;
+				status: 'confirmed' | 'needs_review';
+				storage_path: string | null;
+			}
 
 			const {
 				data: { session },
@@ -54,34 +350,23 @@
 			if (!session) {
 				location.replace('/login');
 			} else {
-				document.getElementById('email')!.textContent = `Signed in as ${session.user.email}`;
+				document.getElementById('user-email')!.textContent = session.user.email ?? '';
 
-				document.getElementById('sign-out')!.addEventListener('click', async () => {
+				document.getElementById('sign-out-btn')!.addEventListener('click', async () => {
 					await supabase.auth.signOut();
 					location.replace('/login');
 				});
 
-				document.getElementById('call-api')!.addEventListener('click', async () => {
-					const resultEl = document.getElementById('api-result')!;
-					resultEl.textContent = 'Loading…';
-					try {
-						const res = await fetch(`${API_BASE_URL}/api/me`, {
-							headers: { Authorization: `Bearer ${session.access_token}` },
-						});
-						const body = await res.json();
-						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
-					} catch (err) {
-						resultEl.textContent = `Request failed: ${(err as Error).message}`;
-					}
-				});
-
-				// Gmail connection status + connect flow
-				const gmailStatusEl = document.getElementById('gmail-status')!;
+				const gmailStatusDot = document.getElementById('gmail-status-dot')!;
+				const gmailStatusText = document.getElementById('gmail-status-text')!;
 				const gmailMessageEl = document.getElementById('gmail-message')!;
-				const gmailConnectBtn = document.getElementById('gmail-connect')!;
-				const gmailFetchBtn = document.getElementById('gmail-fetch')!;
+				const gmailConnectBtn = document.getElementById('gmail-connect-btn')!;
 				const scanBtn = document.getElementById('scan-btn')!;
-				const downloadBtn = document.getElementById('download-btn')!;
+				const scanSummaryEl = document.getElementById('scan-summary')!;
+				const totalsCurrencyEl = document.getElementById('totals-currency')!;
+				const totalsMonthEl = document.getElementById('totals-month')!;
+				const invoicesEmptyEl = document.getElementById('invoices-empty')!;
+				const invoicesTbody = document.getElementById('invoices-tbody')!;
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -102,20 +387,18 @@
 						});
 						const body = await res.json();
 						if (body.connected) {
-							gmailStatusEl.textContent = `Gmail connected (since ${new Date(body.connectedAt).toLocaleString()})`;
+							gmailStatusDot.classList.add('connected');
+							gmailStatusText.textContent = `Gmail connected since ${new Date(body.connectedAt).toLocaleDateString()}`;
 							gmailConnectBtn.style.display = 'none';
-							gmailFetchBtn.style.display = 'inline-block';
 							scanBtn.style.display = 'inline-block';
-							downloadBtn.style.display = 'inline-block';
 						} else {
-							gmailStatusEl.textContent = 'Gmail not connected.';
+							gmailStatusDot.classList.remove('connected');
+							gmailStatusText.textContent = 'Gmail not connected.';
 							gmailConnectBtn.style.display = 'inline-block';
-							gmailFetchBtn.style.display = 'none';
 							scanBtn.style.display = 'none';
-							downloadBtn.style.display = 'none';
 						}
 					} catch (err) {
-						gmailStatusEl.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
+						gmailStatusText.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
 					}
 				}
 
@@ -127,48 +410,185 @@
 					if (body.url) location.href = body.url;
 				});
 
-				gmailFetchBtn.addEventListener('click', async () => {
-					const resultEl = document.getElementById('gmail-fetch-result')!;
-					resultEl.textContent = 'Loading…';
+				function formatAmount(amount: number, currency: string): string {
+					return `${amount.toFixed(2)} ${currency}`;
+				}
+
+				function computeTotals(invoices: Invoice[]) {
+					const byCurrency = new Map<string, number>();
+					const byMonthCurrency = new Map<string, Map<string, number>>();
+
+					for (const inv of invoices) {
+						if (inv.amount == null || !inv.currency) continue; // incomplete rows never contribute
+						byCurrency.set(inv.currency, (byCurrency.get(inv.currency) ?? 0) + inv.amount);
+
+						if (inv.invoice_date) {
+							const month = inv.invoice_date.slice(0, 7);
+							if (!byMonthCurrency.has(month)) byMonthCurrency.set(month, new Map());
+							const monthMap = byMonthCurrency.get(month)!;
+							monthMap.set(inv.currency, (monthMap.get(inv.currency) ?? 0) + inv.amount);
+						}
+					}
+
+					return { byCurrency, byMonthCurrency };
+				}
+
+				function renderTotals(invoices: Invoice[]) {
+					const { byCurrency, byMonthCurrency } = computeTotals(invoices);
+
+					totalsCurrencyEl.innerHTML = '';
+					if (byCurrency.size === 0) {
+						const empty = document.createElement('p');
+						empty.className = 'muted';
+						empty.textContent = 'No confirmed spend yet.';
+						totalsCurrencyEl.appendChild(empty);
+					} else {
+						for (const [currency, total] of byCurrency) {
+							const tile = document.createElement('div');
+							tile.className = 'stat-tile';
+
+							const currencyLabel = document.createElement('span');
+							currencyLabel.className = 'currency';
+							currencyLabel.textContent = currency;
+							tile.appendChild(currencyLabel);
+
+							const amountLabel = document.createElement('span');
+							amountLabel.className = 'amount';
+							amountLabel.textContent = formatAmount(total, currency);
+							tile.appendChild(amountLabel);
+
+							totalsCurrencyEl.appendChild(tile);
+						}
+					}
+
+					totalsMonthEl.innerHTML = '';
+					const months = [...byMonthCurrency.keys()].sort().reverse();
+					if (months.length === 0) {
+						const li = document.createElement('li');
+						li.className = 'muted';
+						li.textContent = 'Nothing to show yet.';
+						totalsMonthEl.appendChild(li);
+					} else {
+						for (const month of months) {
+							const li = document.createElement('li');
+
+							const monthLabel = document.createElement('span');
+							monthLabel.className = 'month-label';
+							monthLabel.textContent = month;
+							li.appendChild(monthLabel);
+
+							const amountsLabel = document.createElement('span');
+							amountsLabel.className = 'month-amounts';
+							const monthMap = byMonthCurrency.get(month)!;
+							amountsLabel.textContent = [...monthMap.entries()]
+								.map(([currency, total]) => formatAmount(total, currency))
+								.join(' · ');
+							li.appendChild(amountsLabel);
+
+							totalsMonthEl.appendChild(li);
+						}
+					}
+				}
+
+				function renderInvoiceRow(invoice: Invoice): HTMLTableRowElement {
+					const tr = document.createElement('tr');
+
+					const vendorCell = document.createElement('td');
+					vendorCell.textContent = invoice.vendor ?? '(unknown)';
+					tr.appendChild(vendorCell);
+
+					const amountCell = document.createElement('td');
+					amountCell.className = 'amount';
+					amountCell.textContent =
+						invoice.amount != null && invoice.currency ? formatAmount(invoice.amount, invoice.currency) : '—';
+					tr.appendChild(amountCell);
+
+					const dateCell = document.createElement('td');
+					dateCell.textContent = invoice.invoice_date ?? '—';
+					tr.appendChild(dateCell);
+
+					const statusCell = document.createElement('td');
+					const badge = document.createElement('span');
+					badge.className = `badge badge-${invoice.status}`;
+					badge.textContent = invoice.status === 'confirmed' ? 'Confirmed' : 'Needs review';
+					statusCell.appendChild(badge);
+					tr.appendChild(statusCell);
+
+					const actionCell = document.createElement('td');
+					if (invoice.storage_path) {
+						const downloadBtn = document.createElement('button');
+						downloadBtn.textContent = 'Download';
+						downloadBtn.className = 'download-btn';
+						downloadBtn.dataset.invoiceId = invoice.id;
+						actionCell.appendChild(downloadBtn);
+					}
+					tr.appendChild(actionCell);
+
+					return tr;
+				}
+
+				function renderTable(invoices: Invoice[]) {
+					invoicesTbody.innerHTML = '';
+					if (invoices.length === 0) {
+						invoicesEmptyEl.style.display = 'block';
+						document.getElementById('invoices-table')!.style.display = 'none';
+						return;
+					}
+					invoicesEmptyEl.style.display = 'none';
+					document.getElementById('invoices-table')!.style.display = 'table';
+					for (const invoice of invoices) {
+						invoicesTbody.appendChild(renderInvoiceRow(invoice));
+					}
+				}
+
+				// Delegated listener: one handler for every download button,
+				// including ones added by future re-renders after a scan.
+				invoicesTbody.addEventListener('click', async (event) => {
+					const target = (event.target as HTMLElement).closest('.download-btn') as HTMLButtonElement | null;
+					if (!target) return;
+					const invoiceId = target.dataset.invoiceId;
+					const originalText = target.textContent;
+					target.textContent = 'Loading…';
+					target.disabled = true;
 					try {
-						const res = await fetch(`${API_BASE_URL}/api/gmail/messages?months=6`, {
+						const res = await fetch(`${API_BASE_URL}/api/invoices/${invoiceId}/download`, {
 							headers: { Authorization: `Bearer ${session.access_token}` },
 						});
 						const body = await res.json();
-						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+						if (body.url) {
+							window.open(body.url, '_blank');
+						} else {
+							target.textContent = 'Failed';
+							setTimeout(() => {
+								target.textContent = originalText;
+							}, 2000);
+						}
 					} catch (err) {
-						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+						target.textContent = 'Failed';
+						setTimeout(() => {
+							target.textContent = originalText;
+						}, 2000);
+					} finally {
+						target.disabled = false;
+						if (target.textContent === 'Loading…') target.textContent = originalText;
 					}
 				});
 
-				document.getElementById('extract-btn')!.addEventListener('click', async () => {
-					const resultEl = document.getElementById('extract-result')!;
-					const messageId = (document.getElementById('extract-message-id') as HTMLInputElement).value.trim();
-					const partId = (document.getElementById('extract-part-id') as HTMLInputElement).value.trim();
-					if (!messageId) {
-						resultEl.textContent = 'Message ID is required.';
-						return;
-					}
-					resultEl.textContent = 'Loading… (this calls the Claude API and can take a few seconds)';
-					try {
-						const res = await fetch(`${API_BASE_URL}/api/gmail/extract`, {
-							method: 'POST',
-							headers: {
-								Authorization: `Bearer ${session.access_token}`,
-								'Content-Type': 'application/json',
-							},
-							body: JSON.stringify(partId ? { messageId, partId } : { messageId }),
-						});
-						const body = await res.json();
-						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
-					} catch (err) {
-						resultEl.textContent = `Request failed: ${(err as Error).message}`;
-					}
-				});
+				async function loadInvoices() {
+					const res = await fetch(`${API_BASE_URL}/api/invoices`, {
+						headers: { Authorization: `Bearer ${session.access_token}` },
+					});
+					const body = await res.json();
+					const invoices: Invoice[] = body.invoices ?? [];
+					renderTotals(invoices);
+					renderTable(invoices);
+				}
 
 				scanBtn.addEventListener('click', async () => {
-					const resultEl = document.getElementById('scan-result')!;
-					resultEl.textContent = 'Loading… (this scans, extracts, and saves — can take a while)';
+					scanSummaryEl.style.display = 'block';
+					scanSummaryEl.classList.remove('has-errors');
+					scanSummaryEl.textContent = 'Scanning… (this can take a while)';
+					(scanBtn as HTMLButtonElement).disabled = true;
 					try {
 						const res = await fetch(`${API_BASE_URL}/api/gmail/scan`, {
 							method: 'POST',
@@ -179,32 +599,23 @@
 							body: JSON.stringify({}),
 						});
 						const body = await res.json();
-						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+						if (!res.ok) {
+							scanSummaryEl.classList.add('has-errors');
+							scanSummaryEl.textContent = body.message || body.error || 'Scan failed.';
+						} else {
+							scanSummaryEl.textContent = `Scanned ${body.count} messages: ${body.saved} saved, ${body.skippedDuplicate} already saved, ${body.skippedNotInvoice} not invoices, ${body.skippedNoPdf} no PDF, ${body.errors} errors.`;
+							if (body.errors > 0) scanSummaryEl.classList.add('has-errors');
+							await loadInvoices();
+						}
 					} catch (err) {
-						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+						scanSummaryEl.classList.add('has-errors');
+						scanSummaryEl.textContent = `Scan failed: ${(err as Error).message}`;
+					} finally {
+						(scanBtn as HTMLButtonElement).disabled = false;
 					}
 				});
 
-				downloadBtn.addEventListener('click', async () => {
-					const resultEl = document.getElementById('download-result')!;
-					const invoiceId = (document.getElementById('download-invoice-id') as HTMLInputElement).value.trim();
-					if (!invoiceId) {
-						resultEl.textContent = 'Invoice ID is required.';
-						return;
-					}
-					resultEl.textContent = 'Loading…';
-					try {
-						const res = await fetch(`${API_BASE_URL}/api/invoices/${invoiceId}/download`, {
-							headers: { Authorization: `Bearer ${session.access_token}` },
-						});
-						const body = await res.json();
-						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
-						if (body.url) window.open(body.url, '_blank');
-					} catch (err) {
-						resultEl.textContent = `Request failed: ${(err as Error).message}`;
-					}
-				});
-
+				await loadInvoices();
 				await refreshGmailStatus();
 			}
 		</script>

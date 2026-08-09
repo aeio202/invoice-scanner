@@ -4,6 +4,19 @@ const { createInvoiceDownloadUrl } = require('../lib/invoiceStorage');
 
 const router = express.Router();
 
+router.get('/', async (req, res) => {
+  // Service-role read: bypasses RLS — must filter by user_id manually, same
+  // pattern as /:id/download below.
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('id, vendor, amount, currency, invoice_date, status, storage_path')
+    .eq('user_id', req.user.id)
+    .order('invoice_date', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
+  if (error) return res.status(500).json({ error: 'Failed to load invoices' });
+  res.json({ invoices: data });
+});
+
 router.get('/:id/download', async (req, res) => {
   // Service-role read: bypasses RLS — must filter by user_id manually. This
   // is the ownership check that makes it safe to mint a signed URL below;
