@@ -18,6 +18,12 @@
 		<button id="call-api">Call protected API</button>
 		<pre id="api-result"></pre>
 
+		<hr />
+
+		<p id="gmail-status">Checking Gmail connection…</p>
+		<p id="gmail-message" style="display: none;"></p>
+		<button id="gmail-connect" style="display: none;">Connect Gmail</button>
+
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
 
@@ -48,6 +54,51 @@
 						resultEl.textContent = `Request failed: ${(err as Error).message}`;
 					}
 				});
+
+				// Gmail connection status + connect flow
+				const gmailStatusEl = document.getElementById('gmail-status')!;
+				const gmailMessageEl = document.getElementById('gmail-message')!;
+				const gmailConnectBtn = document.getElementById('gmail-connect')!;
+
+				const gmailParam = new URLSearchParams(location.search).get('gmail');
+				if (gmailParam) {
+					const messages: Record<string, string> = {
+						connected: 'Gmail connected successfully.',
+						denied: 'Gmail connection was cancelled.',
+						error: 'Gmail connection failed. Please try again.',
+					};
+					gmailMessageEl.textContent = messages[gmailParam] ?? '';
+					gmailMessageEl.style.display = 'block';
+					history.replaceState(null, '', location.pathname);
+				}
+
+				async function refreshGmailStatus() {
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/gmail/status`, {
+							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						if (body.connected) {
+							gmailStatusEl.textContent = `Gmail connected (since ${new Date(body.connectedAt).toLocaleString()})`;
+							gmailConnectBtn.style.display = 'none';
+						} else {
+							gmailStatusEl.textContent = 'Gmail not connected.';
+							gmailConnectBtn.style.display = 'inline-block';
+						}
+					} catch (err) {
+						gmailStatusEl.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
+					}
+				}
+
+				gmailConnectBtn.addEventListener('click', async () => {
+					const res = await fetch(`${API_BASE_URL}/api/gmail/connect`, {
+						headers: { Authorization: `Bearer ${session.access_token}` },
+					});
+					const body = await res.json();
+					if (body.url) location.href = body.url;
+				});
+
+				await refreshGmailStatus();
 			}
 		</script>
 	</body>
