@@ -34,6 +34,10 @@
 		<button id="extract-btn">Extract invoice data</button>
 		<pre id="extract-result"></pre>
 
+		<hr />
+		<button id="scan-btn" style="display: none;">Scan &amp; save invoices</button>
+		<pre id="scan-result"></pre>
+
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
 
@@ -70,6 +74,7 @@
 				const gmailMessageEl = document.getElementById('gmail-message')!;
 				const gmailConnectBtn = document.getElementById('gmail-connect')!;
 				const gmailFetchBtn = document.getElementById('gmail-fetch')!;
+				const scanBtn = document.getElementById('scan-btn')!;
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -93,10 +98,12 @@
 							gmailStatusEl.textContent = `Gmail connected (since ${new Date(body.connectedAt).toLocaleString()})`;
 							gmailConnectBtn.style.display = 'none';
 							gmailFetchBtn.style.display = 'inline-block';
+							scanBtn.style.display = 'inline-block';
 						} else {
 							gmailStatusEl.textContent = 'Gmail not connected.';
 							gmailConnectBtn.style.display = 'inline-block';
 							gmailFetchBtn.style.display = 'none';
+							scanBtn.style.display = 'none';
 						}
 					} catch (err) {
 						gmailStatusEl.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
@@ -142,6 +149,25 @@
 								'Content-Type': 'application/json',
 							},
 							body: JSON.stringify(partId ? { messageId, partId } : { messageId }),
+						});
+						const body = await res.json();
+						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+					} catch (err) {
+						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+					}
+				});
+
+				scanBtn.addEventListener('click', async () => {
+					const resultEl = document.getElementById('scan-result')!;
+					resultEl.textContent = 'Loading… (this scans, extracts, and saves — can take a while)';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/gmail/scan`, {
+							method: 'POST',
+							headers: {
+								Authorization: `Bearer ${session.access_token}`,
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({}),
 						});
 						const body = await res.json();
 						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;

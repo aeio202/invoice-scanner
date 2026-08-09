@@ -1,3 +1,7 @@
+const crypto = require('crypto');
+const { GMAIL_API_BASE } = require('./gmailApi');
+const anthropic = require('./anthropicClient');
+
 // Walks a Gmail MessagePart tree collecting parts that look like a real PDF
 // attachment. Deliberately separate from gmailApi.js's collectAttachments —
 // that one is metadata-only for /messages by design; this one needs the real
@@ -81,4 +85,126 @@ If it is an invoice: extract the vendor name, total amount, currency, and invoic
 
 If it is not an invoice, or you cannot confidently identify it as one: set is_invoice to false, set vendor, amount, currency, and invoice_date all to null, and set reason to one plain-language sentence describing what the document actually is.`;
 
-module.exports = { findPdfPart, INVOICE_EXTRACTION_SCHEMA, EXTRACTION_SYSTEM_PROMPT };
+class ExtractionError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+async function fetchGmailMessage(gmailClient, messageId) {
+  try {
+    const res = await gmailClient.request({
+      method: 'GET',
+      url: `${GMAIL_API_BASE}/messages/${messageId}`,
+      params: { format: 'full' },
+    });
+    return res.data;
+  } catch (err) {
+    if (err?.response?.data?.error === 'invalid_grant') {
+      throw new ExtractionError('gmail_reauth_required', 'Gmail access was revoked. Please reconnect Gmail.');
+    }
+    if (err?.response?.status === 404) {
+      throw new ExtractionError('gmail_message_not_found', `No Gmail message found with id "${messageId}".`);
+    }
+    throw new ExtractionError('gmail_fetch_failed', 'Failed to fetch Gmail message');
+  }
+}
+
+async function fetchPdfBase64(gmailClient, messageId, part) {
+  try {
+    let gmailB64url;
+    if (part.body?.data) {
+      // Rare: Gmail inlines very small attachments directly in the part body.
+      gmailB64url = part.body.data;
+    } else {
+      const attRes = await gmailClient.request({
+        method: 'GET',
+        url: `${GMAIL_API_BASE}/messages/${messageId}/attachments/${part.body.attachmentId}`,
+      });
+      gmailB64url = attRes.data.data;
+    }
+    // Gmail returns attachment bytes as base64url (no padding, - and _
+    // instead of + and /). Decoding as base64url yields the raw bytes;
+    // re-encoding those same bytes as standard base64 is a lossless
+    // round-trip — exactly what Claude's document content block requires.
+    return Buffer.from(gmailB64url, 'base64url').toString('base64');
+  } catch (err) {
+    throw new ExtractionError('attachment_fetch_failed', 'Failed to fetch Gmail attachment');
+  }
+}
+
+async function callClaudeExtraction(pdfBase64) {
+  try {
+    // Sensitive-data flow: this PDF's financial content leaves this backend
+    // and is sent to Anthropic's Claude API. Acceptable per SPEC.md §3.6/§5
+    // (documented sub-processor, standard DPA) — flagged inline as the
+    // elevated data flow it is.
+    const completion = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 1024,
+      system: EXTRACTION_SYSTEM_PROMPT,
+      output_config: { format: { type: 'json_schema', schema: INVOICE_EXTRACTION_SCHEMA } },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+            { type: 'text', text: 'Extract the invoice fields from this document.' },
+          ],
+        },
+      ],
+    });
+    // output_config.format guarantees the first content block is type "text"
+    // whose body is valid JSON matching INVOICE_EXTRACTION_SCHEMA.
+    const textBlock = completion.content.find((b) => b.type === 'text');
+    return { extraction: JSON.parse(textBlock.text), usage: completion.usage };
+  } catch (err) {
+    throw new ExtractionError('claude_failed', 'Failed to extract invoice data');
+  }
+}
+
+// Fetches a Gmail message, locates its PDF attachment (by partId if given,
+// else the first PDF part found), downloads the bytes, and runs Claude
+// extraction on it. Shared by /extract (single message) and /scan (bulk) so
+// the fetch/find/extract sequence is defined exactly once.
+async function extractFromGmailMessage(gmailClient, messageId, partId) {
+  const message = await fetchGmailMessage(gmailClient, messageId);
+  const part = findPdfPart(message.payload, partId);
+  if (!part) {
+    throw new ExtractionError(
+      partId ? 'pdf_part_not_found' : 'no_pdf_attachment',
+      partId
+        ? `No attachment part matching partId "${partId}" was found on this message.`
+        : 'No PDF attachment was found on this message.',
+    );
+  }
+  const pdfBase64 = await fetchPdfBase64(gmailClient, messageId, part);
+  const { extraction, usage } = await callClaudeExtraction(pdfBase64);
+  return { part, extraction, usage };
+}
+
+function normalizeVendor(vendor) {
+  return vendor.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// vendor + exact invoice_date + amount — not user-scoped. Uniqueness across
+// users is enforced by the (user_id, dedup_hash) partial unique index, not
+// by the hash itself. Deliberately NOT truncated to a month: two distinct
+// invoices from the same vendor in the same month (different date and/or
+// amount) must not collide — see invoiceExtraction plan notes.
+function computeDedupHash(vendor, invoiceDate, amount) {
+  return crypto
+    .createHash('sha256')
+    .update(`${normalizeVendor(vendor)}|${invoiceDate}|${String(amount)}`)
+    .digest('hex');
+}
+
+module.exports = {
+  findPdfPart,
+  INVOICE_EXTRACTION_SCHEMA,
+  EXTRACTION_SYSTEM_PROMPT,
+  extractFromGmailMessage,
+  ExtractionError,
+  computeDedupHash,
+};
