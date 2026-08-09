@@ -1,0 +1,54 @@
+---
+
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Dashboard</title>
+	</head>
+	<body>
+		<h1>Dashboard</h1>
+		<p id="email"></p>
+		<button id="sign-out">Sign out</button>
+		<button id="call-api">Call protected API</button>
+		<pre id="api-result"></pre>
+
+		<script>
+			import { supabase, API_BASE_URL } from '../lib/supabase';
+
+			const {
+				data: { session },
+			} = await supabase.auth.getSession();
+
+			if (!session) {
+				location.replace('/login');
+			} else {
+				document.getElementById('email')!.textContent = `Signed in as ${session.user.email}`;
+
+				document.getElementById('sign-out')!.addEventListener('click', async () => {
+					await supabase.auth.signOut();
+					location.replace('/login');
+				});
+
+				document.getElementById('call-api')!.addEventListener('click', async () => {
+					const resultEl = document.getElementById('api-result')!;
+					resultEl.textContent = 'Loading…';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/me`, {
+							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+					} catch (err) {
+						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+					}
+				});
+			}
+		</script>
+	</body>
+</html>

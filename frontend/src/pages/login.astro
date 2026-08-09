@@ -1,0 +1,44 @@
+---
+
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Sign in</title>
+	</head>
+	<body>
+		<h1>Sign in</h1>
+		<button id="google-signin">Sign in with Google</button>
+		<p id="error" style="color: red; display: none;"></p>
+
+		<script>
+			import { supabase } from '../lib/supabase';
+
+			const {
+				data: { session },
+			} = await supabase.auth.getSession();
+			if (session) {
+				location.replace('/dashboard');
+			}
+
+			document.getElementById('google-signin')!.addEventListener('click', async () => {
+				const { error } = await supabase.auth.signInWithOAuth({
+					provider: 'google',
+					options: {
+						redirectTo: `${location.origin}/auth/callback`,
+					},
+				});
+				if (error) {
+					const errorEl = document.getElementById('error')!;
+					errorEl.textContent = error.message;
+					errorEl.style.display = 'block';
+				}
+			});
+		</script>
+	</body>
+</html>

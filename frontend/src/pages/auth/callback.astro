@@ -1,0 +1,40 @@
+---
+
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Signing in…</title>
+	</head>
+	<body>
+		<p id="status">Signing you in…</p>
+
+		<script>
+			import { supabase } from '../../lib/supabase';
+
+			const params = new URLSearchParams(location.search);
+			const oauthError = params.get('error_description') || params.get('error');
+
+			if (oauthError) {
+				const statusEl = document.getElementById('status')!;
+				statusEl.textContent = `Sign-in failed: ${oauthError}`;
+				statusEl.insertAdjacentHTML('afterend', '<p><a href="/login">Back to sign in</a></p>');
+			} else {
+				const {
+					data: { session },
+				} = await supabase.auth.getSession();
+
+				if (session) {
+					location.replace('/dashboard');
+				} else {
+					location.replace('/login');
+				}
+			}
+		</script>
+	</body>
+</html>
