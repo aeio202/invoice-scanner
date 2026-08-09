@@ -24,4 +24,4 @@ async function exchangeCode(code) {
   return tokens; // { refresh_token, access_token, scope, expiry_date, ... }
 }
 
-module.exports = { getAuthUrl, exchangeCode, GMAIL_READONLY_SCOPE };
+module.exports = { getAuthUrl, exchangeCode, GMAIL_READONLY_SCOPE, getClient };

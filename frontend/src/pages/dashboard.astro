@@ -23,6 +23,8 @@
 		<p id="gmail-status">Checking Gmail connection…</p>
 		<p id="gmail-message" style="display: none;"></p>
 		<button id="gmail-connect" style="display: none;">Connect Gmail</button>
+		<button id="gmail-fetch" style="display: none;">Fetch Gmail messages</button>
+		<pre id="gmail-fetch-result"></pre>
 
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
@@ -59,6 +61,7 @@
 				const gmailStatusEl = document.getElementById('gmail-status')!;
 				const gmailMessageEl = document.getElementById('gmail-message')!;
 				const gmailConnectBtn = document.getElementById('gmail-connect')!;
+				const gmailFetchBtn = document.getElementById('gmail-fetch')!;
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -81,9 +84,11 @@
 						if (body.connected) {
 							gmailStatusEl.textContent = `Gmail connected (since ${new Date(body.connectedAt).toLocaleString()})`;
 							gmailConnectBtn.style.display = 'none';
+							gmailFetchBtn.style.display = 'inline-block';
 						} else {
 							gmailStatusEl.textContent = 'Gmail not connected.';
 							gmailConnectBtn.style.display = 'inline-block';
+							gmailFetchBtn.style.display = 'none';
 						}
 					} catch (err) {
 						gmailStatusEl.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
@@ -96,6 +101,20 @@
 					});
 					const body = await res.json();
 					if (body.url) location.href = body.url;
+				});
+
+				gmailFetchBtn.addEventListener('click', async () => {
+					const resultEl = document.getElementById('gmail-fetch-result')!;
+					resultEl.textContent = 'Loading…';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/gmail/messages?months=6`, {
+							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+					} catch (err) {
+						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+					}
 				});
 
 				await refreshGmailStatus();

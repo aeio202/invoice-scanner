@@ -1,9 +1,10 @@
 const express = require('express');
 const requireAuth = require('../middleware/auth');
 const supabase = require('../lib/supabaseClient');
-const { getAuthUrl, exchangeCode, GMAIL_READONLY_SCOPE } = require('../lib/googleOAuthClient');
+const { getAuthUrl, exchangeCode, GMAIL_READONLY_SCOPE, getClient } = require('../lib/googleOAuthClient');
 const { createState, verifyState } = require('../lib/oauthState');
-const { encrypt } = require('../lib/tokenCrypto');
+const { encrypt, decrypt } = require('../lib/tokenCrypto');
+const { GMAIL_API_BASE, resolveMonths, buildSearchQuery, summarizeMessage } = require('../lib/gmailApi');
 
 const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:4321';
@@ -65,6 +66,61 @@ router.get('/status', requireAuth, async (req, res) => {
     connectedAt: data?.connected_at ?? null,
     lastScanAt: data?.last_scan_at ?? null,
   });
+});
+
+router.get('/messages', requireAuth, async (req, res) => {
+  // Service-role read: bypasses RLS — must filter by user_id manually.
+  const { data: connection, error: dbError } = await supabase
+    .from('email_connections')
+    .select('oauth_token')
+    .eq('user_id', req.user.id)
+    .maybeSingle();
+  if (dbError) return res.status(500).json({ error: 'Failed to load Gmail connection' });
+  if (!connection) return res.status(404).json({ error: 'Gmail not connected' });
+
+  const months = resolveMonths(req.query.months);
+  const query = buildSearchQuery(months);
+
+  try {
+    // Elevated operation: decrypts the stored Gmail refresh token and uses it
+    // to mint a live Google access token. The plaintext refresh token lives
+    // only in this function's scope — never logged, never echoed in a
+    // response, never persisted anywhere beyond the ciphertext already in
+    // email_connections.oauth_token.
+    const refreshToken = decrypt(connection.oauth_token);
+    const client = getClient();
+    client.setCredentials({ refresh_token: refreshToken });
+
+    const listRes = await client.request({
+      method: 'GET',
+      url: `${GMAIL_API_BASE}/messages`,
+      params: { q: query, maxResults: 25 },
+    });
+
+    const ids = (listRes.data.messages || []).map((m) => m.id);
+    const messages = await Promise.all(
+      ids.map((id) =>
+        client.request({ method: 'GET', url: `${GMAIL_API_BASE}/messages/${id}`, params: { format: 'full' } }),
+      ),
+    );
+
+    res.json({
+      months,
+      query,
+      resultSizeEstimate: listRes.data.resultSizeEstimate ?? null,
+      count: messages.length,
+      candidates: messages.map((m) => summarizeMessage(m.data)),
+    });
+  } catch (err) {
+    if (err?.response?.data?.error === 'invalid_grant') {
+      return res.status(409).json({
+        error: 'gmail_reauth_required',
+        message: 'Gmail access was revoked. Please reconnect Gmail.',
+      });
+    }
+    console.error('Gmail messages fetch failed:', err.message);
+    res.status(502).json({ error: 'Failed to fetch Gmail messages' });
+  }
 });
 
 module.exports = router;
