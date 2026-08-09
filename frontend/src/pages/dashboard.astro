@@ -26,6 +26,14 @@
 		<button id="gmail-fetch" style="display: none;">Fetch Gmail messages</button>
 		<pre id="gmail-fetch-result"></pre>
 
+		<hr />
+		<label for="extract-message-id">Message ID:</label>
+		<input id="extract-message-id" type="text" placeholder="paste a messageId from above" style="width: 320px;" />
+		<label for="extract-part-id">Part ID (optional):</label>
+		<input id="extract-part-id" type="text" placeholder="optional" style="width: 100px;" />
+		<button id="extract-btn">Extract invoice data</button>
+		<pre id="extract-result"></pre>
+
 		<script>
 			import { supabase, API_BASE_URL } from '../lib/supabase';
 
@@ -109,6 +117,31 @@
 					try {
 						const res = await fetch(`${API_BASE_URL}/api/gmail/messages?months=6`, {
 							headers: { Authorization: `Bearer ${session.access_token}` },
+						});
+						const body = await res.json();
+						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
+					} catch (err) {
+						resultEl.textContent = `Request failed: ${(err as Error).message}`;
+					}
+				});
+
+				document.getElementById('extract-btn')!.addEventListener('click', async () => {
+					const resultEl = document.getElementById('extract-result')!;
+					const messageId = (document.getElementById('extract-message-id') as HTMLInputElement).value.trim();
+					const partId = (document.getElementById('extract-part-id') as HTMLInputElement).value.trim();
+					if (!messageId) {
+						resultEl.textContent = 'Message ID is required.';
+						return;
+					}
+					resultEl.textContent = 'Loading… (this calls the Claude API and can take a few seconds)';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/gmail/extract`, {
+							method: 'POST',
+							headers: {
+								Authorization: `Bearer ${session.access_token}`,
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify(partId ? { messageId, partId } : { messageId }),
 						});
 						const body = await res.json();
 						resultEl.textContent = `${res.status}\n${JSON.stringify(body, null, 2)}`;
