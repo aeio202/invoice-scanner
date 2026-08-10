@@ -1,5 +1,5 @@
 ---
-
+import '../styles/theme.css';
 ---
 
 <html lang="en">
@@ -10,17 +10,21 @@
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
 		<title>Invoice Scanner</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 	</head>
 	<body>
 		<header class="topbar">
-			<h1>Invoice Scanner</h1>
+			<h1 class="logo">STACKLY<span class="dot">.</span></h1>
 			<div class="topbar-right">
 				<span id="user-email" class="muted"></span>
 				<button id="sign-out-btn" class="btn btn-ghost">Sign out</button>
 			</div>
 		</header>
 
-		<section class="panel gmail-panel">
+		<section id="gmail-panel" class="panel panel-feature gmail-panel">
+			<h2 class="gmail-heading">Connect your Gmail to get started</h2>
 			<div class="gmail-row">
 				<div class="gmail-status">
 					<span id="gmail-status-dot" class="status-dot"></span>
@@ -36,6 +40,35 @@
 		</section>
 
 		<section class="panel">
+			<h2>Total spend</h2>
+			<div id="totals-currency" class="stat-tiles"></div>
+			<h3>By month</h3>
+			<ul id="totals-month" class="month-list"></ul>
+		</section>
+
+		<section class="panel">
+			<h2>Invoices</h2>
+			<div class="invoices-toolbar">
+				<div id="month-chips" class="month-chips"></div>
+				<input id="vendor-search" type="search" class="text-input search-input" placeholder="Search vendor…" />
+			</div>
+			<p id="invoices-summary" class="muted mono-caption"></p>
+			<p id="invoices-empty" class="muted" style="display: none;">No invoices yet — click "Scan &amp; save invoices" to get started.</p>
+			<table id="invoices-table" class="invoices-table">
+				<thead>
+					<tr>
+						<th data-sort="vendor" class="sortable">Vendor</th>
+						<th data-sort="amount" class="sortable">Amount</th>
+						<th data-sort="invoice_date" class="sortable">Date</th>
+						<th>Status</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody id="invoices-tbody"></tbody>
+			</table>
+		</section>
+
+		<section class="panel panel-quiet">
 			<h2>Accountant email</h2>
 			<p class="muted">Confirmed invoices for each month are forwarded here automatically. Leave blank to disable forwarding.</p>
 			<div class="settings-row">
@@ -45,54 +78,8 @@
 			<p id="accountant-email-message" class="banner" style="display: none;"></p>
 		</section>
 
-		<section class="panel">
-			<h2>Total spend</h2>
-			<div id="totals-currency" class="stat-tiles"></div>
-			<h3>By month</h3>
-			<ul id="totals-month" class="month-list"></ul>
-		</section>
-
-		<section class="panel">
-			<h2>Invoices</h2>
-			<p id="invoices-empty" class="muted" style="display: none;">No invoices yet — click "Scan &amp; save invoices" to get started.</p>
-			<table id="invoices-table" class="invoices-table">
-				<thead>
-					<tr>
-						<th>Vendor</th>
-						<th>Amount</th>
-						<th>Date</th>
-						<th>Status</th>
-						<th></th>
-					</tr>
-				</thead>
-				<tbody id="invoices-tbody"></tbody>
-			</table>
-		</section>
-
 		<style is:global>
-			:root {
-				--color-bg: #faf9f6;
-				--color-surface: #ffffff;
-				--color-border: #e4e0d8;
-				--color-ink: #24221d;
-				--color-ink-muted: #6b6659;
-				--color-accent: #0f6b5c;
-				--color-accent-hover: #0b5347;
-				--color-warn-bg: #fdf3d9;
-				--color-warn-text: #7a5b00;
-				--color-ok-bg: #e4efe8;
-				--color-ok-text: #2e5940;
-				--color-error-bg: #f7e6e3;
-				--color-error-text: #a3352b;
-				--font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-				--font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-			}
-
 			body {
-				margin: 0;
-				background: var(--color-bg);
-				color: var(--color-ink);
-				font-family: var(--font-sans);
 				line-height: 1.5;
 			}
 
@@ -105,46 +92,46 @@
 				padding: 1.5rem 1.5rem 1rem;
 			}
 
-			.topbar h1 {
-				font-size: 1.25rem;
-				font-weight: 600;
-				margin: 0;
-				letter-spacing: -0.01em;
-			}
-
 			.topbar-right {
 				display: flex;
 				align-items: center;
 				gap: 0.75rem;
 			}
 
-			.muted {
-				color: var(--color-ink-muted);
-				font-size: 0.9rem;
+			.panel-feature {
+				border: 2px solid var(--red);
+				padding: 1.75rem 2rem;
+				transition: padding 200ms var(--ease), border-width 200ms var(--ease);
 			}
 
-			.panel {
-				max-width: 960px;
-				margin: 0 auto 1.25rem;
-				padding: 1.25rem 1.5rem;
-				background: var(--color-surface);
-				border: 1px solid var(--color-border);
-				border-radius: 6px;
+			.gmail-heading {
+				margin: 0 0 1.25rem;
 			}
 
-			.panel h2 {
-				font-size: 1rem;
+			.panel-feature.is-connected {
+				border: 1px solid var(--rule);
+				padding: 1rem 1.5rem;
+			}
+
+			.panel-feature.is-connected .gmail-heading {
+				display: none;
+			}
+
+			.panel-quiet {
+				background: transparent;
+				border: none;
+				border-top: 1px solid var(--rule);
+				border-radius: 0;
+				padding: 1.5rem 1.5rem 0;
+			}
+
+			.panel-quiet h2 {
+				font-family: var(--font-mono);
+				font-size: 0.8rem;
 				font-weight: 600;
-				margin: 0 0 0.75rem;
-			}
-
-			.panel h3 {
-				font-size: 0.85rem;
-				font-weight: 600;
-				color: var(--color-ink-muted);
 				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				margin: 1.25rem 0 0.5rem;
+				letter-spacing: 0.06em;
+				color: var(--ink-soft);
 			}
 
 			.gmail-row {
@@ -165,74 +152,27 @@
 				width: 0.6rem;
 				height: 0.6rem;
 				border-radius: 50%;
-				background: var(--color-ink-muted);
+				background: var(--ink-soft);
 				display: inline-block;
 			}
 
 			.status-dot.connected {
-				background: var(--color-accent);
-			}
-
-			.banner {
-				margin-top: 0.75rem;
-				padding: 0.5rem 0.75rem;
-				border-radius: 4px;
-				background: var(--color-warn-bg);
-				color: var(--color-warn-text);
-				font-size: 0.9rem;
+				background: var(--red);
 			}
 
 			.scan-summary {
 				margin-top: 0.75rem;
 				padding: 0.5rem 0.75rem;
-				border-radius: 4px;
-				background: var(--color-ok-bg);
-				color: var(--color-ok-text);
+				background: var(--paper-raised);
+				border: 1px solid var(--rule);
+				color: var(--ink);
 				font-size: 0.9rem;
 			}
 
 			.scan-summary.has-errors {
-				background: var(--color-error-bg);
-				color: var(--color-error-text);
-			}
-
-			.banner.has-errors {
-				background: var(--color-error-bg);
-				color: var(--color-error-text);
-			}
-
-			.banner.success {
-				background: var(--color-ok-bg);
-				color: var(--color-ok-text);
-			}
-
-			.btn {
-				font-family: inherit;
-				font-size: 0.9rem;
-				font-weight: 500;
-				padding: 0.5rem 0.9rem;
-				border-radius: 4px;
-				border: 1px solid transparent;
-				cursor: pointer;
-			}
-
-			.btn-primary {
-				background: var(--color-accent);
-				color: #ffffff;
-			}
-
-			.btn-primary:hover {
-				background: var(--color-accent-hover);
-			}
-
-			.btn-ghost {
-				background: transparent;
-				border-color: var(--color-border);
-				color: var(--color-ink);
-			}
-
-			.btn-ghost:hover {
-				border-color: var(--color-ink-muted);
+				background: var(--red-soft);
+				border-color: var(--red);
+				color: var(--red);
 			}
 
 			.stat-tiles {
@@ -243,17 +183,18 @@
 
 			.stat-tile {
 				padding: 0.75rem 1rem;
-				border: 1px solid var(--color-border);
-				border-radius: 6px;
+				background: var(--paper-raised);
+				border: 1px solid var(--rule);
 				min-width: 140px;
 			}
 
 			.stat-tile .currency {
 				display: block;
-				font-size: 0.75rem;
-				color: var(--color-ink-muted);
+				font-family: var(--font-mono);
+				font-size: 0.7rem;
+				color: var(--ink-soft);
 				text-transform: uppercase;
-				letter-spacing: 0.04em;
+				letter-spacing: 0.06em;
 			}
 
 			.stat-tile .amount {
@@ -261,6 +202,7 @@
 				font-family: var(--font-mono);
 				font-size: 1.35rem;
 				margin-top: 0.15rem;
+				color: var(--ink);
 			}
 
 			.month-list {
@@ -274,7 +216,7 @@
 				display: flex;
 				gap: 0.75rem;
 				padding: 0.25rem 0;
-				border-bottom: 1px solid var(--color-border);
+				border-bottom: 1px solid var(--rule);
 			}
 
 			.month-list li:last-child {
@@ -282,13 +224,67 @@
 			}
 
 			.month-list .month-label {
+				font-family: var(--font-mono);
 				font-weight: 500;
 				min-width: 5rem;
 			}
 
 			.month-list .month-amounts {
 				font-family: var(--font-mono);
-				color: var(--color-ink-muted);
+				color: var(--ink-soft);
+			}
+
+			.invoices-toolbar {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				flex-wrap: wrap;
+				gap: 0.75rem;
+				margin-bottom: 0.75rem;
+			}
+
+			.month-chips {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 0.4rem;
+			}
+
+			.month-chip {
+				font-family: var(--font-mono);
+				font-size: 0.7rem;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+				padding: 0.35rem 0.6rem;
+				border: 1px solid var(--rule);
+				background: transparent;
+				color: var(--ink-soft);
+				cursor: pointer;
+				transition: border-color 150ms var(--ease), color 150ms var(--ease), background 150ms var(--ease);
+			}
+
+			.month-chip:hover {
+				border-color: var(--red);
+				color: var(--red);
+			}
+
+			.month-chip.active {
+				border-color: var(--red);
+				color: var(--red);
+				background: var(--red-soft);
+				font-weight: 600;
+			}
+
+			.search-input {
+				min-width: 200px;
+				max-width: 240px;
+				flex: 0 1 auto;
+			}
+
+			.mono-caption {
+				font-family: var(--font-mono);
+				font-size: 0.75rem;
+				letter-spacing: 0.03em;
+				margin: 0 0 0.75rem;
 			}
 
 			.invoices-table {
@@ -299,17 +295,40 @@
 
 			.invoices-table th {
 				text-align: left;
-				font-size: 0.75rem;
+				font-family: var(--font-mono);
+				font-size: 0.7rem;
 				text-transform: uppercase;
-				letter-spacing: 0.04em;
-				color: var(--color-ink-muted);
+				letter-spacing: 0.06em;
+				color: var(--ink-soft);
 				padding: 0.4rem 0.5rem;
-				border-bottom: 1px solid var(--color-border);
+				border-bottom: 1px solid var(--rule);
+			}
+
+			.invoices-table th.sortable {
+				cursor: pointer;
+				user-select: none;
+			}
+
+			.invoices-table th.sortable:hover {
+				color: var(--red);
+			}
+
+			.invoices-table th .sort-arrow {
+				margin-left: 0.3rem;
+				color: var(--red);
 			}
 
 			.invoices-table td {
 				padding: 0.5rem;
-				border-bottom: 1px solid var(--color-border);
+				border-bottom: 1px solid var(--rule);
+			}
+
+			.invoices-table tbody tr {
+				transition: background 150ms var(--ease);
+			}
+
+			.invoices-table tbody tr:hover {
+				background: var(--red-soft);
 			}
 
 			.invoices-table td.amount {
@@ -319,34 +338,40 @@
 			.badge {
 				display: inline-block;
 				padding: 0.15rem 0.5rem;
-				border-radius: 999px;
-				font-size: 0.75rem;
+				font-family: var(--font-mono);
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+				font-size: 0.7rem;
 				font-weight: 500;
 			}
 
 			.badge-confirmed {
-				background: var(--color-ok-bg);
-				color: var(--color-ok-text);
+				background: var(--red-soft);
+				border: 1px solid var(--red);
+				color: var(--red);
 			}
 
 			.badge-needs_review {
-				background: var(--color-warn-bg);
-				color: var(--color-warn-text);
+				background: transparent;
+				border: 1px solid var(--rule);
+				color: var(--ink-soft);
 			}
 
 			.download-btn {
-				font-family: inherit;
-				font-size: 0.85rem;
+				font-family: var(--font-mono);
+				text-transform: uppercase;
+				letter-spacing: 0.05em;
+				font-size: 0.7rem;
 				background: transparent;
-				border: 1px solid var(--color-border);
-				border-radius: 4px;
-				padding: 0.25rem 0.6rem;
+				border: 1px solid var(--rule);
+				padding: 0.3rem 0.6rem;
 				cursor: pointer;
-				color: var(--color-accent);
+				color: var(--red);
+				transition: border-color 150ms var(--ease);
 			}
 
 			.download-btn:hover {
-				border-color: var(--color-accent);
+				border-color: var(--red);
 			}
 
 			.settings-row {
@@ -356,18 +381,19 @@
 			}
 
 			.text-input {
-				font-family: inherit;
+				font-family: var(--font-body);
 				font-size: 0.9rem;
 				padding: 0.5rem 0.75rem;
-				border: 1px solid var(--color-border);
-				border-radius: 4px;
+				background: var(--paper-raised);
+				border: 1px solid var(--rule);
+				color: var(--ink);
 				min-width: 260px;
 				flex: 1;
 			}
 
 			.text-input:focus {
 				outline: none;
-				border-color: var(--color-accent);
+				border-color: var(--red);
 			}
 		</style>
 
@@ -398,6 +424,7 @@
 					location.replace('/login');
 				});
 
+				const gmailPanel = document.getElementById('gmail-panel')!;
 				const gmailStatusDot = document.getElementById('gmail-status-dot')!;
 				const gmailStatusText = document.getElementById('gmail-status-text')!;
 				const gmailMessageEl = document.getElementById('gmail-message')!;
@@ -408,9 +435,20 @@
 				const totalsMonthEl = document.getElementById('totals-month')!;
 				const invoicesEmptyEl = document.getElementById('invoices-empty')!;
 				const invoicesTbody = document.getElementById('invoices-tbody')!;
+				const monthChipsEl = document.getElementById('month-chips')!;
+				const vendorSearchInput = document.getElementById('vendor-search') as HTMLInputElement;
+				const invoicesSummaryEl = document.getElementById('invoices-summary')!;
 				const accountantEmailInput = document.getElementById('accountant-email-input') as HTMLInputElement;
 				const accountantEmailSaveBtn = document.getElementById('accountant-email-save-btn') as HTMLButtonElement;
 				const accountantEmailMessageEl = document.getElementById('accountant-email-message')!;
+
+				type SortColumn = 'vendor' | 'amount' | 'invoice_date';
+
+				let allInvoices: Invoice[] = [];
+				let selectedMonth = 'all';
+				let searchQuery = '';
+				let sortColumn: SortColumn = 'invoice_date';
+				let sortDirection: 'asc' | 'desc' = 'desc';
 
 				const gmailParam = new URLSearchParams(location.search).get('gmail');
 				if (gmailParam) {
@@ -435,11 +473,13 @@
 							gmailStatusText.textContent = `Gmail connected since ${new Date(body.connectedAt).toLocaleDateString()}`;
 							gmailConnectBtn.style.display = 'none';
 							scanBtn.style.display = 'inline-block';
+							gmailPanel.classList.add('is-connected');
 						} else {
 							gmailStatusDot.classList.remove('connected');
 							gmailStatusText.textContent = 'Gmail not connected.';
 							gmailConnectBtn.style.display = 'inline-block';
 							scanBtn.style.display = 'none';
+							gmailPanel.classList.remove('is-connected');
 						}
 					} catch (err) {
 						gmailStatusText.textContent = `Failed to load Gmail status: ${(err as Error).message}`;
@@ -534,6 +574,130 @@
 					}
 				}
 
+				function getFilteredSortedInvoices(): Invoice[] {
+					let list = allInvoices;
+
+					if (selectedMonth !== 'all') {
+						list = list.filter((inv) => inv.invoice_date?.slice(0, 7) === selectedMonth);
+					}
+
+					if (searchQuery) {
+						const q = searchQuery.toLowerCase();
+						list = list.filter((inv) => (inv.vendor ?? '').toLowerCase().includes(q));
+					}
+
+					return [...list].sort((a, b) => {
+						let cmp = 0;
+						if (sortColumn === 'vendor') {
+							cmp = (a.vendor ?? '').localeCompare(b.vendor ?? '');
+						} else if (sortColumn === 'amount') {
+							cmp = (a.amount ?? -Infinity) - (b.amount ?? -Infinity);
+						} else {
+							cmp = (a.invoice_date ?? '').localeCompare(b.invoice_date ?? '');
+						}
+						return sortDirection === 'asc' ? cmp : -cmp;
+					});
+				}
+
+				function renderMonthChips() {
+					const months = [
+						...new Set(
+							allInvoices.map((inv) => inv.invoice_date?.slice(0, 7)).filter((m): m is string => !!m)
+						),
+					]
+						.sort()
+						.reverse();
+
+					// A rescan can drop the month currently selected in the UI; fall back
+					// to "all" rather than silently filtering against a month that no
+					// longer exists in the data.
+					if (selectedMonth !== 'all' && !months.includes(selectedMonth)) {
+						selectedMonth = 'all';
+					}
+
+					monthChipsEl.innerHTML = '';
+
+					const allChip = document.createElement('button');
+					allChip.type = 'button';
+					allChip.className = 'month-chip' + (selectedMonth === 'all' ? ' active' : '');
+					allChip.textContent = 'All';
+					allChip.dataset.month = 'all';
+					monthChipsEl.appendChild(allChip);
+
+					for (const month of months) {
+						const chip = document.createElement('button');
+						chip.type = 'button';
+						chip.className = 'month-chip' + (selectedMonth === month ? ' active' : '');
+						chip.textContent = month;
+						chip.dataset.month = month;
+						monthChipsEl.appendChild(chip);
+					}
+				}
+
+				function updateSortHeaders() {
+					document.querySelectorAll<HTMLElement>('.invoices-table th.sortable').forEach((th) => {
+						th.querySelector('.sort-arrow')?.remove();
+						if (th.dataset.sort === sortColumn) {
+							const arrow = document.createElement('span');
+							arrow.className = 'sort-arrow';
+							arrow.textContent = sortDirection === 'asc' ? '▲' : '▼';
+							th.appendChild(arrow);
+						}
+					});
+				}
+
+				function renderInvoicesSummary(filtered: Invoice[]) {
+					if (filtered.length === 0) {
+						invoicesSummaryEl.textContent = '';
+						return;
+					}
+					const { byCurrency } = computeTotals(filtered);
+					const totalsText = [...byCurrency.entries()]
+						.map(([currency, total]) => formatAmount(total, currency))
+						.join(' · ');
+					const invoiceWord = filtered.length === 1 ? 'invoice' : 'invoices';
+					invoicesSummaryEl.textContent = totalsText
+						? `${filtered.length} ${invoiceWord} · ${totalsText}`
+						: `${filtered.length} ${invoiceWord}`;
+				}
+
+				function applyFiltersAndRender() {
+					renderMonthChips();
+					updateSortHeaders();
+					const filtered = getFilteredSortedInvoices();
+					renderInvoicesSummary(filtered);
+					renderTable(filtered);
+				}
+
+				monthChipsEl.addEventListener('click', (event) => {
+					const target = (event.target as HTMLElement).closest('.month-chip') as HTMLButtonElement | null;
+					if (!target) return;
+					selectedMonth = target.dataset.month!;
+					applyFiltersAndRender();
+				});
+
+				let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+				vendorSearchInput.addEventListener('input', () => {
+					clearTimeout(searchDebounce);
+					searchDebounce = setTimeout(() => {
+						searchQuery = vendorSearchInput.value.trim();
+						applyFiltersAndRender();
+					}, 150);
+				});
+
+				document.querySelectorAll<HTMLElement>('.invoices-table th.sortable').forEach((th) => {
+					th.addEventListener('click', () => {
+						const col = th.dataset.sort as SortColumn;
+						if (sortColumn === col) {
+							sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+						} else {
+							sortColumn = col;
+							sortDirection = col === 'vendor' ? 'asc' : 'desc';
+						}
+						applyFiltersAndRender();
+					});
+				});
+
 				function renderInvoiceRow(invoice: Invoice): HTMLTableRowElement {
 					const tr = document.createElement('tr');
 
@@ -574,6 +738,10 @@
 				function renderTable(invoices: Invoice[]) {
 					invoicesTbody.innerHTML = '';
 					if (invoices.length === 0) {
+						invoicesEmptyEl.textContent =
+							allInvoices.length === 0
+								? 'No invoices yet — click "Scan & save invoices" to get started.'
+								: 'No invoices match your filters.';
 						invoicesEmptyEl.style.display = 'block';
 						document.getElementById('invoices-table')!.style.display = 'none';
 						return;
@@ -668,9 +836,9 @@
 						headers: { Authorization: `Bearer ${session.access_token}` },
 					});
 					const body = await res.json();
-					const invoices: Invoice[] = body.invoices ?? [];
-					renderTotals(invoices);
-					renderTable(invoices);
+					allInvoices = body.invoices ?? [];
+					renderTotals(allInvoices);
+					applyFiltersAndRender();
 				}
 
 				scanBtn.addEventListener('click', async () => {

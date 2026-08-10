@@ -1,5 +1,5 @@
 ---
-
+import '../styles/theme.css';
 ---
 
 <html lang="en">
@@ -10,35 +10,28 @@
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
 		<title>Sign in</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
 	</head>
 	<body>
-		<h1>Sign in</h1>
-		<button id="google-signin">Sign in with Google</button>
-		<p id="error" style="color: red; display: none;"></p>
+		<header class="nav">
+			<span class="logo">STACKLY<span class="dot">.</span></span>
+			<span class="nav-tag">inbox&nbsp;→&nbsp;ledger&nbsp;→&nbsp;accountant</span>
+		</header>
+
+		<main class="auth-hero">
+			<div class="auth-panel panel">
+				<h1>Stop hunting for invoices in Gmail.</h1>
+				<p class="muted">Sign in with Google to scan your inbox, extract every invoice, and see a clear spend dashboard — no manual digging required.</p>
+				<button id="google-signin" class="btn btn-primary">Sign in with Google</button>
+				<p id="error" class="banner has-errors" style="display: none;"></p>
+			</div>
+		</main>
 
 		<script>
-			import { supabase } from '../lib/supabase';
-
-			const {
-				data: { session },
-			} = await supabase.auth.getSession();
-			if (session) {
-				location.replace('/dashboard');
-			}
-
-			document.getElementById('google-signin')!.addEventListener('click', async () => {
-				const { error } = await supabase.auth.signInWithOAuth({
-					provider: 'google',
-					options: {
-						redirectTo: `${location.origin}/auth/callback`,
-					},
-				});
-				if (error) {
-					const errorEl = document.getElementById('error')!;
-					errorEl.textContent = error.message;
-					errorEl.style.display = 'block';
-				}
-			});
+			import { initAuthHero } from '../lib/authHero';
+			await initAuthHero('google-signin', 'error');
 		</script>
 	</body>
 </html>
