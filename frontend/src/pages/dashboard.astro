@@ -39,6 +39,22 @@ import '../styles/theme.css';
 			<p id="scan-summary" class="scan-summary" style="display: none;"></p>
 		</section>
 
+		<section class="panel panel-quiet">
+			<h2>Accountant email</h2>
+			<p class="muted">Confirmed invoices for each month are forwarded here automatically. Leave blank to disable forwarding.</p>
+			<div class="settings-row">
+				<input id="accountant-email-input" type="email" class="text-input" placeholder="accountant@example.com" />
+				<button id="accountant-email-save-btn" class="btn btn-primary">Save</button>
+			</div>
+			<p id="accountant-email-message" class="banner" style="display: none;"></p>
+
+			<div id="forward-now-row" class="settings-row forward-now-row" style="display: none;">
+				<input id="forward-period-input" type="month" class="text-input forward-period-input" />
+				<button id="forward-now-btn" class="btn btn-ghost">Forward now</button>
+			</div>
+			<p id="forward-now-message" class="banner" style="display: none;"></p>
+		</section>
+
 		<section class="panel">
 			<h2>Total spend</h2>
 			<div id="totals-currency" class="stat-tiles"></div>
@@ -68,19 +84,10 @@ import '../styles/theme.css';
 			</table>
 		</section>
 
-		<section class="panel panel-quiet">
-			<h2>Accountant email</h2>
-			<p class="muted">Confirmed invoices for each month are forwarded here automatically. Leave blank to disable forwarding.</p>
-			<div class="settings-row">
-				<input id="accountant-email-input" type="email" class="text-input" placeholder="accountant@example.com" />
-				<button id="accountant-email-save-btn" class="btn btn-primary">Save</button>
-			</div>
-			<p id="accountant-email-message" class="banner" style="display: none;"></p>
-		</section>
-
 		<style is:global>
 			body {
 				line-height: 1.5;
+				padding-bottom: 3rem;
 			}
 
 			.topbar {
@@ -117,14 +124,9 @@ import '../styles/theme.css';
 				display: none;
 			}
 
-			.panel-quiet {
-				background: transparent;
-				border: none;
-				border-top: 1px solid var(--rule);
-				border-radius: 0;
-				padding: 1.5rem 1.5rem 0;
-			}
-
+			/* Full .panel weight (background, border, padding) — only the heading
+			   gets a distinct treatment, so this section doesn't look identical
+			   to Gmail/Total spend/Invoices but still reads as a real feature. */
 			.panel-quiet h2 {
 				font-family: var(--font-mono);
 				font-size: 0.8rem;
@@ -395,6 +397,15 @@ import '../styles/theme.css';
 				outline: none;
 				border-color: var(--red);
 			}
+
+			.forward-now-row {
+				margin-top: 0.75rem;
+			}
+
+			.forward-period-input {
+				min-width: 160px;
+				flex: 0 1 auto;
+			}
 		</style>
 
 		<script>
@@ -441,6 +452,10 @@ import '../styles/theme.css';
 				const accountantEmailInput = document.getElementById('accountant-email-input') as HTMLInputElement;
 				const accountantEmailSaveBtn = document.getElementById('accountant-email-save-btn') as HTMLButtonElement;
 				const accountantEmailMessageEl = document.getElementById('accountant-email-message')!;
+				const forwardNowRow = document.getElementById('forward-now-row')!;
+				const forwardPeriodInput = document.getElementById('forward-period-input') as HTMLInputElement;
+				const forwardNowBtn = document.getElementById('forward-now-btn') as HTMLButtonElement;
+				const forwardNowMessageEl = document.getElementById('forward-now-message')!;
 
 				type SortColumn = 'vendor' | 'amount' | 'invoice_date';
 
@@ -786,6 +801,21 @@ import '../styles/theme.css';
 					}
 				});
 
+				function defaultForwardPeriod(): string {
+					const d = new Date();
+					d.setUTCDate(1);
+					d.setUTCMonth(d.getUTCMonth() - 1);
+					return d.toISOString().slice(0, 7);
+				}
+
+				// No accountant_email set = forwarding is off for this user; hiding the
+				// button here mirrors the server-side check in /api/forward/now (which
+				// rejects the request either way — this is just so the UI doesn't offer
+				// an action that would 400).
+				function updateForwardNowVisibility() {
+					forwardNowRow.style.display = accountantEmailInput.value.trim() ? 'flex' : 'none';
+				}
+
 				async function loadAccountantEmail() {
 					try {
 						const res = await fetch(`${API_BASE_URL}/api/me`, {
@@ -795,6 +825,8 @@ import '../styles/theme.css';
 						accountantEmailInput.value = body.accountantEmail ?? '';
 					} catch (err) {
 						// Non-fatal: field just stays blank; save still works from a clean input.
+					} finally {
+						updateForwardNowVisibility();
 					}
 				}
 
@@ -828,6 +860,49 @@ import '../styles/theme.css';
 						accountantEmailMessageEl.textContent = `Failed to save: ${(err as Error).message}`;
 					} finally {
 						accountantEmailSaveBtn.disabled = false;
+						updateForwardNowVisibility();
+					}
+				});
+
+				forwardPeriodInput.value = defaultForwardPeriod();
+
+				forwardNowBtn.addEventListener('click', async () => {
+					const period = forwardPeriodInput.value;
+					if (!period) return;
+					forwardNowBtn.disabled = true;
+					forwardNowMessageEl.style.display = 'none';
+					try {
+						const res = await fetch(`${API_BASE_URL}/api/forward/now`, {
+							method: 'POST',
+							headers: {
+								Authorization: `Bearer ${session.access_token}`,
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({ period }),
+						});
+						const body = await res.json();
+						forwardNowMessageEl.style.display = 'block';
+						forwardNowMessageEl.classList.remove('has-errors', 'success');
+						if (body.status === 'sent') {
+							forwardNowMessageEl.classList.add('success');
+							forwardNowMessageEl.textContent = `Sent digest for ${period} (${body.count} invoice${body.count === 1 ? '' : 's'}).`;
+						} else if (body.status === 'already_sent') {
+							// Not an error — the safety rule working as intended, so this gets
+							// neutral styling rather than the red has-errors banner.
+							forwardNowMessageEl.textContent = body.message;
+						} else if (body.status === 'no_invoices') {
+							forwardNowMessageEl.textContent = body.message;
+						} else {
+							forwardNowMessageEl.classList.add('has-errors');
+							forwardNowMessageEl.textContent = body.message || body.error || 'Failed to forward.';
+						}
+					} catch (err) {
+						forwardNowMessageEl.style.display = 'block';
+						forwardNowMessageEl.classList.remove('success');
+						forwardNowMessageEl.classList.add('has-errors');
+						forwardNowMessageEl.textContent = `Failed to forward: ${(err as Error).message}`;
+					} finally {
+						forwardNowBtn.disabled = false;
 					}
 				});
 

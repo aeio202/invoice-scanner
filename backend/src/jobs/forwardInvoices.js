@@ -12,6 +12,57 @@ function nextMonthStart(period) {
   return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10); // JS Date month is 0-indexed, so `month` here IS next month
 }
 
+// Single-user forwarding attempt for one period. Shared by the all-users cron
+// loop below and the on-demand /api/forward/now route — the double-send
+// guard (insert forward_jobs BEFORE sending, rely on the unique constraint)
+// only protects against duplicate sends if every caller goes through this one
+// function instead of reimplementing the sequence.
+async function forwardInvoicesForUser(user, period) {
+  const { data: invoices, error: invErr } = await supabase
+    .from('invoices')
+    .select('id, vendor, amount, currency, invoice_date, storage_path')
+    .eq('user_id', user.id)
+    .eq('status', 'confirmed')
+    .gte('invoice_date', `${period}-01`)
+    .lt('invoice_date', nextMonthStart(period));
+  if (invErr) throw invErr;
+
+  if (!invoices || invoices.length === 0) {
+    return { status: 'no_invoices' };
+  }
+
+  // Reserve this (user, period) FIRST — before sending anything. If this
+  // insert hits the unique constraint, a job for this period already exists
+  // (sent or failed) and must not be attempted again.
+  const { data: job, error: insertErr } = await supabase
+    .from('forward_jobs')
+    .insert({
+      user_id: user.id,
+      period,
+      recipient_email: user.accountant_email,
+      invoice_ids: invoices.map((i) => i.id),
+      status: 'pending',
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (insertErr) {
+    if (insertErr.code === '23505') {
+      return { status: 'already_sent' };
+    }
+    throw insertErr;
+  }
+
+  try {
+    await sendInvoiceDigest(supabase, { recipientEmail: user.accountant_email, userEmail: user.email, period, invoices });
+    await supabase.from('forward_jobs').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', job.id);
+    return { status: 'sent', count: invoices.length };
+  } catch (sendErr) {
+    await supabase.from('forward_jobs').update({ status: 'failed', error_message: sendErr.message }).eq('id', job.id);
+    throw sendErr;
+  }
+}
+
 // System-level job: reads every user with a configured accountant_email —
 // same "no single requesting user" reasoning as the scan job's cross-user
 // query. Never sends anything for a user who hasn't explicitly set a
@@ -35,51 +86,14 @@ async function runForwardForAllUsers(period = previousMonthPeriod()) {
 
   for (const user of users) {
     try {
-      const { data: invoices, error: invErr } = await supabase
-        .from('invoices')
-        .select('id, vendor, amount, currency, invoice_date, storage_path')
-        .eq('user_id', user.id)
-        .eq('status', 'confirmed')
-        .gte('invoice_date', `${period}-01`)
-        .lt('invoice_date', nextMonthStart(period));
-      if (invErr) throw invErr;
-
-      if (!invoices || invoices.length === 0) {
-        skippedNoInvoices += 1;
-        continue;
-      }
-
-      // Reserve this (user, period) FIRST — before sending anything. If this
-      // insert hits the unique constraint, a job for this period already
-      // exists (sent or failed) and must not be attempted again.
-      const { data: job, error: insertErr } = await supabase
-        .from('forward_jobs')
-        .insert({
-          user_id: user.id,
-          period,
-          recipient_email: user.accountant_email,
-          invoice_ids: invoices.map((i) => i.id),
-          status: 'pending',
-        })
-        .select('id')
-        .maybeSingle();
-
-      if (insertErr) {
-        if (insertErr.code === '23505') {
-          skippedAlreadySent += 1;
-          continue;
-        }
-        throw insertErr;
-      }
-
-      try {
-        await sendInvoiceDigest(supabase, { recipientEmail: user.accountant_email, userEmail: user.email, period, invoices });
-        await supabase.from('forward_jobs').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', job.id);
+      const result = await forwardInvoicesForUser(user, period);
+      if (result.status === 'sent') {
         sent += 1;
-        console.log(`[forward-job] user ${user.id}: sent digest for ${period} (${invoices.length} invoices) to ${user.accountant_email}`);
-      } catch (sendErr) {
-        await supabase.from('forward_jobs').update({ status: 'failed', error_message: sendErr.message }).eq('id', job.id);
-        throw sendErr;
+        console.log(`[forward-job] user ${user.id}: sent digest for ${period} (${result.count} invoices) to ${user.accountant_email}`);
+      } else if (result.status === 'no_invoices') {
+        skippedNoInvoices += 1;
+      } else if (result.status === 'already_sent') {
+        skippedAlreadySent += 1;
       }
     } catch (err) {
       failed += 1;
@@ -94,4 +108,4 @@ async function runForwardForAllUsers(period = previousMonthPeriod()) {
   );
 }
 
-module.exports = { runForwardForAllUsers, previousMonthPeriod };
+module.exports = { runForwardForAllUsers, forwardInvoicesForUser, previousMonthPeriod };
